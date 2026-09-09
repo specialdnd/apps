@@ -143,9 +143,11 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0b0d10;
 #lock{position:absolute;top:0;left:0;right:0;bottom:0;z-index:30;display:flex;
   align-items:center;justify-content:center;background:rgba(10,12,15,.94);color:#fff;
   flex-direction:column;gap:22px;cursor:pointer}
-#lock .e{font-size:140px}
+#lock .e{font-size:132px}
 #lock .t{font-size:74px;font-weight:900;letter-spacing:-3px}
-#lock .s{font-size:32px;color:#a8b0b8;font-weight:700}
+#lock .v{font-size:34px;font-weight:800;color:#ffb443;letter-spacing:-1px;margin-top:-8px}
+#lock .c{font-size:22px;font-weight:600;color:#79838d;letter-spacing:-.5px}
+#lock .s{font-size:32px;color:#a8b0b8;font-weight:700;margin-top:10px}
 </style>
 </head>
 <body>
@@ -216,7 +218,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0b0d10;
     <div class="wall" id="wallR">
       <div class="ceil"></div>
       <div id="box">
-        <div id="display"><svg id="dot" viewBox="0 0 11 16"></svg></div>
+        <div id="display"><svg id="dot" viewBox="0 0 20 7"></svg></div>
         <div id="bellRow">
           <button class="sq" id="bell" aria-label="비상벨">
             <svg viewBox="0 0 100 100"><path d="M50 16 c-15 0 -24 11 -24 25 c0 18 -6 22 -9 28 h66 c-3 -6 -9 -10 -9 -28 c0 -14 -9 -25 -24 -25 z" fill="#5a4a10"/>
@@ -240,7 +242,13 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0b0d10;
 
   </div>
 
-  <div id="lock"><div class="e">🛗</div><div class="t">엘리베이터 게임</div><div class="s">화면을 눌러서 시작해요</div></div>
+  <div id="lock">
+    <div class="e">🛗</div>
+    <div class="t">엘리베이터 게임</div>
+    <div class="v">기본판 · v5.5</div>
+    <div class="c">제작: specialdnd@gmail.com</div>
+    <div class="s">화면을 눌러서 시작해요</div>
+  </div>
 </div>
 
 <script>
@@ -648,22 +656,24 @@ var FONT={
 '8':['01110','10001','10001','01110','10001','10001','01110'],
 '9':['01110','10001','10001','01111','00001','00010','01100'],
 'B':['11110','10001','10001','11110','10001','10001','11110']};
+/* 굵은 화살표 (7 x 7) */
 var ARROW={
-up:['00100','01110','11111','00100','00100','00100','00100'],
-down:['00100','00100','00100','00100','11111','01110','00100'],
-none:['00000','00000','00000','00000','00000','00000','00000']};
+up:  ['0001000','0011100','0111110','1111111','0011100','0011100','0011100'],
+down:['0011100','0011100','0011100','1111111','0111110','0011100','0001000'],
+none:['0000000','0000000','0000000','0000000','0000000','0000000','0000000']};
 var dotSvg=document.getElementById('dot');
+/* 숫자를 앞에, 화살표를 뒤에 나란히 — 한 줄이라 숫자가 훨씬 크게 보인다 */
 function drawDot(label,dir){
-  var LIT='#ff9b16', OFF='rgba(255,155,22,.055)', s='';
+  var LIT='#ff9b16', OFF='rgba(255,155,22,.05)', s='';
   function put(gx,gy,rows){
     for(var y=0;y<rows.length;y++){ var r=rows[y];
       for(var x=0;x<r.length;x++)
-        s+='<rect x="'+(gx+x+.1)+'" y="'+(gy+y+.1)+'" width=".8" height=".8" rx=".22" fill="'+(r[x]==='1'?LIT:OFF)+'"/>';
+        s+='<rect x="'+(gx+x+.06)+'" y="'+(gy+y+.06)+'" width=".88" height=".88" rx=".2" fill="'+(r[x]==='1'?LIT:OFF)+'"/>';
     }}
-  put(3,0,ARROW[dir]||ARROW.none);
   var ch=String(label).split('');
-  var ox=Math.round((11-(ch.length*5+(ch.length-1)))/2);
-  for(var i=0;i<ch.length;i++) put(ox+i*6,9,FONT[ch[i]]||FONT['0']);
+  if(ch.length>=2){ put(0,0,FONT[ch[0]]||FONT['0']); put(6,0,FONT[ch[1]]||FONT['0']); }
+  else            { put(3,0,FONT[ch[0]]||FONT['0']); }
+  put(13,0,ARROW[dir]||ARROW.none);
   dotSvg.innerHTML=s;
 }
 
@@ -788,9 +798,19 @@ var sceneEl=document.getElementById('scene'), bannerEl=document.getElementById('
 var cur=2, doorOpen=true, running=false, dir=0;
 var phase='idle';   /* idle | opening | holding | closing | travelling */
 var holdUntil=0, closeNow=false;
+var reopenReq=false;                       /* 닫히는 중에 열림 버튼을 눌렀다 */
+var doorTimer=null, doorSettle=null, doorPromise=Promise.resolve();
 var queue=[];                 /* 예약된 층 (index) */
-var SPEED={slow:{door:4000,step:1500,hold:8000,ding:1000},
-            fast:{door:2000,step:750, hold:4000,ding:500}};
+/* ======================================================================
+   ★★★  시 간  설 정  ★★★   (숫자는 1000 = 1초)
+   door : 문이 열리거나 닫히는 데 걸리는 시간
+   step : 한 층 올라가거나 내려가는 데 걸리는 시간
+   hold : 문이 열린 채로 기다리는 시간
+   ding : "딩동" 소리 뒤 문이 열리기까지의 시간
+   pause: 문이 다 닫히고 나서 출발하기까지 잠깐 멈추는 시간
+   ====================================================================== */
+var SPEED={slow:{door:5000,step:1500,hold:15000,ding:1200,pause:500},
+            fast:{door:2600,step:750, hold:8000, ding:700, pause:300}};
 var spd=SPEED.slow;
 function applySpeed(){
   stage.style.setProperty('--door-ms',spd.door+'ms');
@@ -807,16 +827,24 @@ function setScene(i){
   else  sceneEl.innerHTML='<svg viewBox="0 0 1000 950" preserveAspectRatio="xMidYMid slice">'+f.art+'</svg>';
   bannerEl.textContent=f.name+' · '+f.sub;
 }
-function openDoor(){ return new Promise(function(r){
-  closeNow=false;                      /* 새로 열 때 닫기 요청 초기화 */
-  if(doorOpen){ r(); return; }
-  doorOpen=true; sDoor(spd.door,true); stage.classList.add('open'); setTimeout(r,spd.door+50);
-});}
-function closeDoor(){ return new Promise(function(r){
-  if(!doorOpen){ r(); return; }
-  doorOpen=false; say('문이 닫힙니다.'); sDoor(spd.door,false);
-  stage.classList.remove('open'); setTimeout(r,spd.door+50);
-});}
+/* 문 동작 — 움직이는 도중에 반대 버튼을 누르면 그 자리에서 방향을 바꾼다 */
+function setDoor(open){
+  if(doorOpen===open) return doorPromise;          /* 이미 그 상태이거나 그 방향으로 가는 중 */
+  if(doorTimer){ clearTimeout(doorTimer); doorTimer=null; }
+  var prev=doorSettle; doorSettle=null;            /* 앞 동작을 기다리던 쪽은 즉시 풀어 준다 */
+  doorOpen=open;
+  if(open){ sDoor(spd.door,true); }
+  else { say('문이 닫힙니다.'); sDoor(spd.door,false); }
+  stage.classList.toggle('open',open);
+  doorPromise=new Promise(function(r){
+    doorSettle=r;
+    doorTimer=setTimeout(function(){ doorTimer=null; doorSettle=null; r(); }, spd.door+50);
+  });
+  if(prev) prev();
+  return doorPromise;
+}
+function openDoor(){ closeNow=false; return setDoor(true); }
+function closeDoor(){ return setDoor(false); }
 
 /* ====================== 버튼판 ====================== */
 var grid=document.getElementById('grid'), fbEls={};
@@ -852,6 +880,14 @@ async function holdWait(){
   while(!closeNow && Date.now()<holdUntil) await wait(100);
 }
 
+/* 닫히던 문을 다시 열고, 열린 채로 기다린다 */
+async function reopenHold(){
+  reopenReq=false;
+  phase='opening';
+  var op=openDoor(); announce(); await op;
+  phase='holding'; await holdWait();
+}
+
 function pickNext(){
   var up=queue.filter(function(x){return x>cur;}), dn=queue.filter(function(x){return x<cur;});
   if(dir>0 && up.length) return Math.min.apply(null,up);
@@ -878,19 +914,29 @@ async function run(){
       /* 출발 준비: 문을 완전히 닫고 나서 목적지를 정한다 */
       phase='closing';
       if(doorOpen) await closeDoor();
+      if(reopenReq){ await reopenHold(); continue; }      /* 닫는 중 열림 버튼 → 다시 연다 */
       if(!queue.length) break;
 
       var target=pickNext();
       if(target!==cur){
-        while(doorOpen) await closeDoor();      /* 출발 직전 재확인 */
+        while(doorOpen && !reopenReq) await closeDoor();  /* 출발 직전 재확인 */
+        if(reopenReq){ await reopenHold(); continue; }
+        await wait(spd.pause);                 /* 문이 다 닫힌 뒤 잠깐 멈췄다가 출발 */
+        if(reopenReq){ await reopenHold(); continue; }
+        /* 안전장치: 문이 완전히 닫히기 전에는 절대 움직이지 않는다 */
+        while(doorOpen||doorTimer){ if(reopenReq) break; await wait(60); }
+        if(reopenReq){ await reopenHold(); continue; }
         phase='travelling';
         dir = target>cur ? 1 : -1;
         humOn();
+        drawDot(FLOORS[cur].k, dir>0?'up':'down');   /* 출발: 지금 층 + 방향 화살표 */
         while(cur!==target){
+          /* 한 층 움직이기 직전에도 문 상태를 다시 확인한다 */
+          while(doorOpen||doorTimer) await wait(60);
           cur+=dir;
           placeCar(cur,spd.step); placeWin(cur,spd.step);
-          drawDot(FLOORS[cur].k, dir>0?'up':'down');
           await wait(spd.step);
+          drawDot(FLOORS[cur].k, dir>0?'up':'down'); /* 그 층에 실제로 닿은 순간에 숫자가 바뀐다 */
 
           /* 한 층 지날 때마다 다시 판단 — 예약이 바뀌었을 수 있다 */
           if(queue.indexOf(cur)>-1){ target=cur; break; }   /* 이 층이 예약됐으면 정차 */
@@ -908,8 +954,13 @@ async function run(){
       var op2=openDoor(); announce(); await op2;
       phase='holding'; await holdWait();
     }
-    phase='closing';
-    if(doorOpen) await closeDoor();   /* 마지막 층에서도 닫고 그 층에 머무름 */
+    /* 마지막 층에서도 닫고 그 층에 머무름 — 닫히는 중 열림을 누르면 다시 연다 */
+    for(;;){
+      if(reopenReq){ await reopenHold(); if(queue.length) break; continue; }
+      phase='closing';
+      if(doorOpen) await closeDoor();
+      if(!reopenReq) break;
+    }
   } while(queue.length);              /* 닫는 동안 들어온 예약도 처리 */
   phase='idle'; dir=0; running=false; paint();
 }
@@ -919,10 +970,10 @@ function blink(el){ el.classList.add('on'); setTimeout(function(){ el.classList.
 
 document.getElementById('bOpen').addEventListener('pointerdown',async function(e){
   e.preventDefault(); sClick();
-  /* 이동 중이거나 출발하려고 문 닫는 중에는 무시 — 문 열린 채 출발하는 것을 막는다 */
-  if(phase==='travelling'||phase==='closing') return;
+  if(phase==='travelling') return;      /* 이동 중에는 열지 않는다 — 안전 */
   blink(this);
   holdUntil=Date.now()+spd.hold; closeNow=false;   /* 열림 유지 연장 */
+  if(phase==='closing'){ reopenReq=true; openDoor(); return; }   /* 닫히는 중 → 그 자리에서 다시 열림 */
   if(running){ if(!doorOpen){ var op3=openDoor(); announce(); await op3; } return; }
   if(queue.indexOf(cur)<0) queue.push(cur);
   paint(); run();
@@ -931,7 +982,8 @@ document.getElementById('bClose').addEventListener('pointerdown',async function(
   e.preventDefault(); sClick();
   if(phase==='travelling'||phase==='closing') return;
   blink(this);
-  closeNow=true;                              /* 대기 중이면 즉시 닫기 */
+  closeNow=true; reopenReq=false; holdUntil=0;   /* 대기 중이면 즉시 닫기 */
+  if(phase==='opening'){ closeDoor(); return; }  /* 열리는 중 → 그 자리에서 닫힘 */
   if(!running && doorOpen){
     running=true; phase='closing'; await closeDoor();
     phase='idle'; running=false; run();
@@ -960,19 +1012,38 @@ seg('segSound',function(v){
 seg('segSpeed',function(v){ spd=SPEED[v]; applySpeed(); sClick(); });
 
 var view='normal', sx=null, sy=null;
+
+/* 실제로 보이는 화면 크기 — 전자칠판·태블릿에서 주소창/툴바를 뺀 영역 */
+function vp(){
+  var vv=window.visualViewport;
+  return { W: Math.round(vv ? vv.width  : (document.documentElement.clientWidth  || window.innerWidth)),
+           H: Math.round(vv ? vv.height : (document.documentElement.clientHeight || window.innerHeight)) };
+}
+function setSegOn(id,v){
+  var el=document.getElementById(id); if(!el) return;
+  [].forEach.call(el.children,function(c){ c.classList.toggle('on', c.getAttribute('data-v')===v); });
+}
+function goFull(){
+  try{
+    if(!document.fullscreenElement && document.documentElement.requestFullscreen)
+      return document.documentElement.requestFullscreen();
+  }catch(e){}
+  return null;
+}
 seg('segView',function(v){
   view=v; sClick();
   try{
-    if(v==='full' && !document.fullscreenElement) document.documentElement.requestFullscreen();
-    if(v!=='full' && document.fullscreenElement) document.exitFullscreen();
+    if(v==='full') goFull();
+    else if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
   }catch(e){}
-  if(v==='small' && sx===null){ sx=null; sy=null; }
+  if(v!=='small'){ sx=null; sy=null; }
   stage.classList.toggle('small',v==='small');
-  setTimeout(fit,60);
+  fit(); setTimeout(fit,80); setTimeout(fit,400);
 });
 
 function fit(){
-  var W=window.innerWidth, H=window.innerHeight;
+  var d=vp(), W=d.W, H=d.H;
+  if(!W||!H) return;
   var base=Math.min(W/1920,H/1080), s=base*(view==='small'?0.8:1);
   var w=1920*s, h=1080*s, x, y;
   if(view==='small'){
@@ -980,12 +1051,25 @@ function fit(){
     x=Math.max(-w*0.45,Math.min(W-w*0.55,sx));
     y=Math.max(0,Math.min(H-h*0.35,sy));
     sx=x; sy=y;
-  } else { x=(W-w)/2; y=(H-h)/2; }
+  } else {
+    x=(W-w)/2; y=(H-h)/2;            /* 항상 화면 정가운데 */
+  }
   stage.style.transform='scale('+s+')';
-  stage.style.left=x+'px'; stage.style.top=y+'px';
+  stage.style.left=Math.round(x)+'px'; stage.style.top=Math.round(y)+'px';
 }
-window.addEventListener('resize',fit);
-window.addEventListener('orientationchange',function(){ setTimeout(fit,150); });
+function refit(){ fit(); setTimeout(fit,120); setTimeout(fit,450); }
+window.addEventListener('resize',refit);
+window.addEventListener('orientationchange',function(){ setTimeout(refit,150); });
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize',fit);
+  window.visualViewport.addEventListener('scroll',fit);
+}
+document.addEventListener('fullscreenchange',function(){
+  /* ESC로 전체화면을 빠져나오면 '일반'으로 되돌린다 */
+  if(!document.fullscreenElement && view==='full'){ view='normal'; setSegOn('segView','normal'); }
+  refit();
+});
+window.addEventListener('load',refit);
 
 /* 축소 창 드래그 */
 (function(){
@@ -1004,18 +1088,25 @@ window.addEventListener('orientationchange',function(){ setTimeout(fit,150); });
 })();
 
 /* ====================== 시작 ====================== */
+/* 항상 '일반' 모드로 시작 — 축소 상태로 열리지 않게 */
+view='normal'; sx=null; sy=null;
+stage.classList.remove('small');
+setSegOn('segView','normal');
+
 setScene(cur); drawDot(FLOORS[cur].k,'none');
 placeCar(cur,0); placeWin(cur,0); paint();
 stage.classList.add('open');
-fit();
+refit(); setTimeout(fit,800);
 
 var lock=document.getElementById('lock');
 lock.addEventListener('pointerdown',function(e){
   e.preventDefault();
   var c=ac(); if(c&&c.state==='suspended'){ try{ c.resume(); }catch(err){} }
   pickVoice();
+  /* 전체화면으로 바꾸지 않는다 — '일반' 화면 그대로 시작 (위 '전체' 버튼으로 직접 전환) */
   lock.style.display='none';
   sDing();
+  refit();
   setTimeout(announce,600);
 });
 })();
